@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import base64
@@ -5,20 +6,16 @@ import socket
 import threading as th
 import customtkinter as ctk
 from tkinter.filedialog import askopenfilename
+from logging import log, DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-# import pgpy
-# from pgpy.constants import PubKeyAlgorithm, KeyFlags
-# from datetime import timedelta
-
-
-PORT = 10000
+PORT = 13698
 BUFFER_SIZE = 8192
 TRANSFER_END = b'\x11packet_transfer_end\x11'
 
-RSA_KEY_LENGTH = 4096
-
 
 def message_box(title, message):
+    log(INFO, f"Creating message box {title=}")
+
     pop = ctk.CTkToplevel()
     pop.wm_title(title)
     pop.attributes("-topmost", True)
@@ -33,9 +30,11 @@ def message_box(title, message):
 def check_connection(sock: socket.socket | None) -> bool:
     if sock is None:
         return False
+
     try:
         sock.getsockname()
         return True
+
     except socket.error:
         return False
 
@@ -52,16 +51,15 @@ class Application:
         self._host: bool = False
         self._buffer: bytes = bytes()
 
-        # self._key_pair: pgpy.PGPKey = self._generate_key()
-        # self._host_key: pgpy.PGPKey | None = None
-
-        th.Thread(target=self._create_window).start()
+        window = th.Thread(target=self._create_window)
+        window.start()
+        window.join()
 
     def _create_window(self):
         self._win = ctk.CTk()
 
         self._win.wm_title("File transfer")
-        self._win.geometry("960x540")
+        self._win.geometry("350x375")
 
         # Connection status
         connection_frame = ctk.CTkFrame(self._win, corner_radius=8)
@@ -159,18 +157,6 @@ class Application:
 
         self._win.mainloop()
 
-    def _generate_key(self):
-        key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, RSA_KEY_LENGTH)
-        uid = pgpy.PGPUID.new(self._ip)
-
-        key.add_uid(
-            uid,
-            usage={KeyFlags.Sign, KeyFlags.EncryptCommunications},
-            key_expiration=timedelta(minutes=15)
-        )
-
-        return key
-
     def _connect_client(self, ip):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -184,8 +170,6 @@ class Application:
 
         self._socket = sock
 
-        # self._socket.send(
-        #     self._generate_payload("key", self._key_pair.pubkey.__bytes__()))
         while True:
             try:
                 data = self._socket.recv(BUFFER_SIZE)
@@ -209,12 +193,14 @@ class Application:
             sock.bind((self._ip, PORT))
             sock.listen(1)
             self._widgets["connection_status_label"].configure(text="connection successful")
+
         except socket.socket:
             self._widgets["connection_status_label"].configure(text="connection failed")
             return
 
         self._host = True
         self._socket = sock
+
         while True:
             connection, _ = sock.accept()
             peer = {"socket": connection, "key": None}
@@ -223,15 +209,13 @@ class Application:
             th.Thread(target=self._server_handler, args=(peer,), daemon=True).start()
 
     def _server_handler(self, peer: dict[str, socket.socket]):
-        # peer["socket"].send(
-        #     self._generate_payload("key", self._key_pair.pubkey.__bytes__()))
-
         while True:
             try:
                 data = peer["socket"].recv(BUFFER_SIZE)
                 for _, user in self._users.items():
                     if user != peer:
                         user["socket"].send(data)
+
             except socket.error:
                 self._users.pop(peer["socket"].getpeername().__repr__())
                 peer["socket"].close()
@@ -241,6 +225,7 @@ class Application:
                 self._buffer += data[0:-len(TRANSFER_END)]
                 self._decode_packet(self._buffer)
                 self._buffer = bytes()
+
             else:
                 self._buffer += data
 
@@ -266,29 +251,27 @@ class Application:
         decoded["data"] = base64.b64decode(decoded['data'])
 
         match decoded["type"]:
-            case "key":
-                # if self._host:
-                #     if not self._users[decoded["address"]]["key"] or self._users[decoded["address"]]["key"].is_expired():
-                #         self._users[decoded["address"]]["key"], _ = pgpy.PGPMessage.from_blob(decoded["data"])
-                # else:
-                #     if not self._host_key or self._host_key.is_expired():
-                #         self._host_key, _ = pgpy.PGPMessage.from_blob(decoded["data"])
-                # message_box("key!", "Key received!")
-                pass
             case "file":
-                # data = pgpy.PGPMessage.from_blob(decoded["data"])
-                # data = self._key_pair.decrypt(data)
-                # with open(decoded["filename"], "wb") as file:
-                #     file.write(data.__bytes__())
-
-                with open(decoded["filename"], "wb") as file:
-                    file.write(decoded["data"])
+                self._decode_file(decoded)
             case _:
-                pass
+                log(WARNING, "Received request with unknown type,", decoded['type'])
+
+    def _decode_file(self, decoded: dict) -> None:
+        log(DEBUG, "Saving file,", decoded['filename'])
+
+        with open(decoded["filename"], "wb") as file:
+            file.write(decoded["data"])
 
     def send(self, packet_type: str, data: bytes, **kwargs) -> None:
+        log(DEBUG, f"Sending file, {packet_type=}")
         assert check_connection(self._socket)
-        self._broadcast(self._generate_payload(packet_type, data, **kwargs))
+        self._broadcast(
+            self._generate_payload(
+                packet_type,
+                data,
+                **kwargs
+            )
+        )
 
 
 def main():
@@ -299,4 +282,5 @@ def main():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
     main()
