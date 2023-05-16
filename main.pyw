@@ -212,133 +212,7 @@ class ServerObject:
         ...
 
 
-class Application:
-    def __init__(self, server):
-        self._server: Server = server
-
-        self._win: ctk.CTk | None = None
-        self._widgets: dict = {}
-        self._opened_file: str = ""
-
-        self._users: dict[str, dict[str, socket.socket]] = {}
-        self._socket: socket.socket | None = None
-        self._ip: str = socket.gethostbyname(socket.gethostname())
-        self._host: bool = False
-        self._buffer: bytes = bytes()
-
-        self._window = th.Thread(target=self._create_window)
-
-    def launch(self):
-        self._window.start()
-        self._window.join()
-
-    def _create_window(self):
-        self._win = ctk.CTk()
-
-        self._win.wm_title("File transfer")
-        self._win.geometry("350x375")
-
-        # Connection status
-        connection_frame = ctk.CTkFrame(self._win, corner_radius=8)
-        connection_frame.pack(padx=10, pady=10, fill="x")
-
-        connection_label = ctk.CTkLabel(connection_frame, text="Connection status")
-        connection_label.pack(padx=10, pady=10, side="left")
-
-        connection_status_label = ctk.CTkLabel(connection_frame, text="not connected")
-        connection_status_label.pack(padx=10, pady=10, side="left")
-
-        self._widgets["connection_status_label"] = connection_status_label
-
-        # Inner frame
-        inner_frame = ctk.CTkFrame(self._win, corner_radius=8)
-        inner_frame.pack(padx=10, pady=10, fill="both", expand=True)
-
-        # File frame
-        file_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
-        file_frame.pack(padx=10, pady=10, anchor="nw")
-
-        def choose_file_button():
-            self._opened_file = askopenfilename()
-            file_label.configure(text=os.path.basename(self._opened_file))
-
-        file_button = ctk.CTkButton(file_frame, text="Choose file", width=290, command=choose_file_button)
-        file_button.pack(padx=10, pady=10, side="left")
-
-        file_label = ctk.CTkLabel(file_frame, text="", width=120, anchor="w")
-        file_label.pack(padx=10, pady=10, side="left")
-
-        # Sharing button frame
-        sending_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
-        sending_frame.pack(padx=10, pady=10, anchor="nw")
-
-        def share_file_button():
-            if not check_connection(self._socket):
-                message_box("Error", "You are not connected!")
-                return
-
-            with open(self._opened_file, "rb") as file:
-                self.send(
-                    "file",
-                    file.read(),
-                    filename=os.path.basename(self._opened_file))
-
-        send_file_button = ctk.CTkButton(sending_frame, text="Send all", width=290, command=share_file_button)
-        send_file_button.pack(padx=10, pady=10)
-
-        # Server connection
-        client_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
-        client_frame.pack(padx=10, pady=10, anchor="nw")
-
-        client_label = ctk.CTkLabel(client_frame, text="Server IP", width=50)
-        client_label.pack(padx=10, pady=10, side="left")
-
-        client_entry = ctk.CTkEntry(client_frame, width=120)
-        client_entry.pack(padx=10, pady=10, side="left")
-
-        def connect_client_button():
-            entry = client_entry.get()
-
-            if check_connection(self._socket):
-                message_box("Error", "You are already connected to a server!")
-                return
-
-            octets = [x.isdecimal() for x in entry.split(".")]
-            if len(octets) == 4 and all(octets):
-                th.Thread(target=self._connect_client, args=(entry,), daemon=True).start()
-            else:
-                message_box("Error", f"Incorrect ip address '{entry}'")
-
-        client_button = ctk.CTkButton(client_frame, text="connect", width=80, command=connect_client_button)
-        client_button.pack(padx=10, pady=10, side="left")
-
-        # Host connection
-        hosting_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
-        hosting_frame.pack(padx=10, pady=10, anchor="nw")
-
-        hosting_label = ctk.CTkLabel(hosting_frame, text="User IP", width=50)
-        hosting_label.pack(padx=10, pady=10, side="left")
-
-        hosting_ip_label = ctk.CTkLabel(hosting_frame, text=self._ip, width=120)
-        hosting_ip_label.pack(padx=10, pady=10, side="left")
-
-        def connect_server_button():
-            if check_connection(self._socket):
-                message_box("Error", "You are already connected to a server!")
-                return
-
-            th.Thread(target=self._connect_server, daemon=True).start()
-
-        hosting_button = ctk.CTkButton(hosting_frame, text="host", width=80, command=connect_server_button)
-        hosting_button.pack(padx=10, pady=10, side="left")
-
-        self._win.mainloop()
-
-
 def main():
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("dark-blue")
-
     server = Server()
     # app = Application(server=server)
 
@@ -346,6 +220,7 @@ def main():
     # app.launch()
 
     server.close()
+
 
 if __name__ == '__main__':
     # logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
