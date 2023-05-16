@@ -6,12 +6,17 @@ import socket
 import threading
 import threading as th
 import customtkinter as ctk
+from pgpy import PGPKey, PGPMessage, PGPUID
+from pgpy.constants import PubKeyAlgorithm, KeyFlags, HashAlgorithm, SymmetricKeyAlgorithm, CompressionAlgorithm
 from tkinter.filedialog import askopenfilename
 from logging import log, DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 PORT = 13698
 BUFFER_SIZE = 8192
 TRANSFER_END = b'\x11packet_transfer_end\x11'
+
+
+KEY_SIZE = 4096
 
 
 def message_box(title, message):
@@ -44,28 +49,103 @@ class Server(threading.Thread):
     def __init__(self):
         super(Server, self).__init__()
 
+        self._active_servers: list[ServerObject] = []
+        self._key: PGPKey = self._load_key()
+
+    def _load_key(self):
+        if os.path.exists("ServerKey"):
+            log(INFO, "Loading key from file")
+
+            with open("ServerKey", "rb") as file:
+                key = file.read()
+
+            key = PGPKey.from_blob(key)
+            return key
+
+        else:
+            log(WARNING, "Key not found, generating one now")
+
+            key = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, KEY_SIZE)
+            uid = PGPUID.new("FileTransferServer")
+            key.add_uid(
+                uid,
+                usage={KeyFlags.Sign, KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                hashes=[HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512, HashAlgorithm.SHA224],
+                ciphers=[SymmetricKeyAlgorithm.AES256, SymmetricKeyAlgorithm.AES192, SymmetricKeyAlgorithm.AES128],
+                compression=[CompressionAlgorithm.ZLIB, CompressionAlgorithm.BZ2, CompressionAlgorithm.ZIP, CompressionAlgorithm.Uncompressed]
+            )
+
+            with open("ServerKey", "wb") as file:
+                file.write(key.__bytes__())
+
+            return key
+
+    @property
+    def key(self):
+        return self._key.pubkey.fingerprint[-8:-4] + " " + self._key.pubkey.fingerprint[-4:]
+
+    def discover_server_at(self, ip):
+        # beep boop
+        ...
+
+    @property
+    def known_servers(self):
+        return self._active_servers
+
+
+class ServerObject:
+    def __init__(self):
+        self._canonical_name = "Good Server"
+        self._public_key: PGPKey = self._load_key()
+
+    def _load_key(self):
+        log(INFO, "Loading key from server")
+        # do some stuff here
+        # talk to server
+        key_from_server = b"\xc6\x8d\x04dc\xc6\xcc\x01\x04\x00\xa0 }|\xaf\xeb\xb2\x19(\xa2B\x88z\x1b\x10Z\xf5!\xf8\xf6^\xf6\x88\x7f\x01\xe3\xaey\x90R\xe3\xe5\x19\x95\xf8\x95\xbf\n\x12\x822\xb0\x08i\xb6\xa9\xbb/\xda\x9c\xb3x\x9d\xb0J\x05\xfa>\xf3h\xe3\xa8\xd7,R\xd9X\x15\x82d\xe8.\xbc\x08\x90\x9b\x84d\x0fD_\x14\x8f7\xbc|'<T\x9b\xaa*z\x1b\xc0\x05\x97\xebd\xc3\xe6\xd0\xde=\xa8`\xcc\xdc\x9f\xf1\xf6\x03|xp\x05\xabl\xbd\xf5\x8dN\xe5\xd3_\xb6\x81\r\x00\x11\x01\x00\x01\xcd\x12FileTransferServer\xc2\xb9\x04\x13\x01\x08\x00#\x05\x02dc\xc6\xcc\x02\x1b\x06\x02\x1e\x01\x16!\x04')\xe0\xe4\x02g\x15\x1d\x9f\x8b\xe4\xd6\xb0I\xef\x98~O\xc8P\x00\n\t\x10\xb0I\xef\x98~O\xc8Pp\xd2\x04\x00\x81\x83\xa0\x07ri\t4\xfe\xb6=\\\xf2@6pD\x91\xa8\xba\xdeZ\xd1]C\xcdWN3d\x12K\x13\x82\x835\xde\x0c!Y\x8a\x89f`~\tTW1\xec7\xfcl\x04\x90\xc8\xfd\xf0\xcb\xc31LYk\x7f9\x98B#z\xe3\xb8Ehi\xc7\x9a/hO\x92\x17<\xdb\x81\xb8\xfaZ\x81\xa5\xea\xe3)\xfbm\x80\xee\xf5\xaa\x0b\x00nuP\xf4=\xe7\x12\x84\xd3\x87\xb2j\x85\x08\xf3\xb9\xf3\x16\xe2\xb3B\xa4.f\xc4\x08\x96"
+
+        key = PGPKey.from_blob(key_from_server)
+
+        if not key.is_public:
+            log(WARNING, "Server sent private key... what?")
+            key = key.pubkey
+
+        return key
+
+    @property
+    def name(self):
+        return self._canonical_name
+
+    @property
+    def key(self):
+        return self._public_key.fingerprint[-8:-4] + " " + self._public_key.fingerprint[-4:]
+
     def get_files_from_directory(self, external_file_location):
         ...
 
-    def i_want_to_send_file_button(self, file_location, external_file_location, ip):
+    def i_want_to_send_file_button(self, file_location, external_file_location):
         ...
 
 
 class Application:
-    def __init__(self):
+    def __init__(self, server):
+        self._server: Server = server
+
         self._win: ctk.CTk | None = None
         self._widgets: dict = {}
         self._opened_file: str = ""
 
-        self._users: dict[str, dict[str, socket.socket | pgpy.PGPKey]] = {}
+        self._users: dict[str, dict[str, socket.socket]] = {}
         self._socket: socket.socket | None = None
         self._ip: str = socket.gethostbyname(socket.gethostname())
         self._host: bool = False
         self._buffer: bytes = bytes()
 
-        window = th.Thread(target=self._create_window)
-        window.start()
-        window.join()
+        self._window = th.Thread(target=self._create_window)
+
+    def launch(self):
+        self._window.start()
+        self._window.join()
 
     def _create_window(self):
         self._win = ctk.CTk()
@@ -169,130 +249,19 @@ class Application:
 
         self._win.mainloop()
 
-    # def _connect_client(self, ip):
-    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #
-    #     try:
-    #         sock.connect((ip, PORT))
-    #         self._widgets["connection_status_label"].configure(text="connection successful")
-    #     except socket.error:
-    #         self._widgets["connection_status_label"].configure(text="connection failed")
-    #         return
-    #
-    #     self._socket = sock
-    #
-    #     while True:
-    #         try:
-    #             data = self._socket.recv(BUFFER_SIZE)
-    #         except socket.error:
-    #             self._socket.close()
-    #             self._widgets["connection_status_label"].configure(text="connection shutdown")
-    #             return
-    #
-    #         if data[-len(TRANSFER_END):] == TRANSFER_END:
-    #             self._buffer += data[0:-len(TRANSFER_END)]
-    #             self._decode_packet(self._buffer)
-    #             self._buffer = bytes()
-    #         else:
-    #             self._buffer += data
-    #
-    # def _connect_server(self):
-    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #
-    #     try:
-    #         sock.bind((self._ip, PORT))
-    #         sock.listen(1)
-    #         self._widgets["connection_status_label"].configure(text="connection successful")
-    #
-    #     except socket.socket:
-    #         self._widgets["connection_status_label"].configure(text="connection failed")
-    #         return
-    #
-    #     self._host = True
-    #     self._socket = sock
-    #
-    #     while True:
-    #         connection, _ = sock.accept()
-    #         peer = {"socket": connection, "key": None}
-    #         self._users[connection.getpeername().__repr__()] = peer
-    #
-    #         th.Thread(target=self._server_handler, args=(peer,), daemon=True).start()
-    #
-    # def _server_handler(self, peer: dict[str, socket.socket]):
-    #     while True:
-    #         try:
-    #             data = peer["socket"].recv(BUFFER_SIZE)
-    #             for _, user in self._users.items():
-    #                 if user != peer:
-    #                     user["socket"].send(data)
-    #
-    #         except socket.error:
-    #             self._users.pop(peer["socket"].getpeername().__repr__())
-    #             peer["socket"].close()
-    #             break
-    #
-    #         if data[-len(TRANSFER_END):] == TRANSFER_END:
-    #             self._buffer += data[0:-len(TRANSFER_END)]
-    #             self._decode_packet(self._buffer)
-    #             self._buffer = bytes()
-    #
-    #         else:
-    #             self._buffer += data
-    #
-    # def _broadcast(self, data: bytes) -> None:
-    #     if self._host:
-    #         for _, user in self._users.items():
-    #             user["socket"].send(data)
-    #     else:
-    #         self._socket.send(data)
-    #
-    # def _generate_payload(self, packet_type: str, data: bytes, **kwargs) -> bytes:
-    #     packet = {
-    #         "type": packet_type,
-    #         "address": self._socket.getsockname().__repr__(),
-    #         "data": base64.b64encode(data).decode('ascii')}
-    #     packet.update(kwargs)
-    #     payload = json.dumps(packet).encode("ascii")
-    #
-    #     return payload + TRANSFER_END
-    #
-    # def _decode_packet(self, packet: bytes) -> None:
-    #     decoded = json.loads(packet.decode("ascii"))
-    #     decoded["data"] = base64.b64decode(decoded['data'])
-    #
-    #     match decoded["type"]:
-    #         case "file":
-    #             self._decode_file(decoded)
-    #         case _:
-    #             log(WARNING, "Received request with unknown type,", decoded['type'])
-    #
-    # def _decode_file(self, decoded: dict) -> None:
-    #     log(DEBUG, "Saving file,", decoded['filename'])
-    #
-    #     with open(decoded["filename"], "wb") as file:
-    #         file.write(decoded["data"])
-    #
-    # def send(self, packet_type: str, data: bytes, **kwargs) -> None:
-    #     log(DEBUG, f"Sending file, {packet_type=}")
-    #     assert check_connection(self._socket)
-    #     self._broadcast(
-    #         self._generate_payload(
-    #             packet_type,
-    #             data,
-    #             **kwargs
-    #         )
-    #     )
-
 
 def main():
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
 
-    Application()
+    server = Server()
+    app = Application(server=server)
+
+    server.start()
+    app.launch()
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
+    # logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
+    logging.basicConfig(level=DEBUG)
     main()
