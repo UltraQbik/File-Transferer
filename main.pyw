@@ -219,6 +219,7 @@ def main():
 
     server.close()
 
+
 if __name__ == '__main__':
     logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
     # logging.basicConfig(level=DEBUG)
