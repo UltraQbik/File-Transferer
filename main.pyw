@@ -52,6 +52,8 @@ class Server(threading.Thread):
         self._active_servers: list[ServerObject] = []
         self._key: PGPKey = self._load_key()
 
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     def _load_key(self):
         if os.path.exists("ServerKey"):
             log(INFO, "Loading key from file")
