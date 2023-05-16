@@ -3,6 +3,7 @@ import os
 import json
 import base64
 import socket
+import threading
 import threading as th
 import customtkinter as ctk
 from tkinter.filedialog import askopenfilename
@@ -37,6 +38,17 @@ def check_connection(sock: socket.socket | None) -> bool:
 
     except socket.error:
         return False
+
+
+class Server(threading.Thread):
+    def __init__(self):
+        super(Server, self).__init__()
+
+    def get_files_from_directory(self, external_file_location):
+        ...
+
+    def i_want_to_send_file_button(self, file_location, external_file_location, ip):
+        ...
 
 
 class Application:
@@ -157,121 +169,121 @@ class Application:
 
         self._win.mainloop()
 
-    def _connect_client(self, ip):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            sock.connect((ip, PORT))
-            self._widgets["connection_status_label"].configure(text="connection successful")
-        except socket.error:
-            self._widgets["connection_status_label"].configure(text="connection failed")
-            return
-
-        self._socket = sock
-
-        while True:
-            try:
-                data = self._socket.recv(BUFFER_SIZE)
-            except socket.error:
-                self._socket.close()
-                self._widgets["connection_status_label"].configure(text="connection shutdown")
-                return
-
-            if data[-len(TRANSFER_END):] == TRANSFER_END:
-                self._buffer += data[0:-len(TRANSFER_END)]
-                self._decode_packet(self._buffer)
-                self._buffer = bytes()
-            else:
-                self._buffer += data
-
-    def _connect_server(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            sock.bind((self._ip, PORT))
-            sock.listen(1)
-            self._widgets["connection_status_label"].configure(text="connection successful")
-
-        except socket.socket:
-            self._widgets["connection_status_label"].configure(text="connection failed")
-            return
-
-        self._host = True
-        self._socket = sock
-
-        while True:
-            connection, _ = sock.accept()
-            peer = {"socket": connection, "key": None}
-            self._users[connection.getpeername().__repr__()] = peer
-
-            th.Thread(target=self._server_handler, args=(peer,), daemon=True).start()
-
-    def _server_handler(self, peer: dict[str, socket.socket]):
-        while True:
-            try:
-                data = peer["socket"].recv(BUFFER_SIZE)
-                for _, user in self._users.items():
-                    if user != peer:
-                        user["socket"].send(data)
-
-            except socket.error:
-                self._users.pop(peer["socket"].getpeername().__repr__())
-                peer["socket"].close()
-                break
-
-            if data[-len(TRANSFER_END):] == TRANSFER_END:
-                self._buffer += data[0:-len(TRANSFER_END)]
-                self._decode_packet(self._buffer)
-                self._buffer = bytes()
-
-            else:
-                self._buffer += data
-
-    def _broadcast(self, data: bytes) -> None:
-        if self._host:
-            for _, user in self._users.items():
-                user["socket"].send(data)
-        else:
-            self._socket.send(data)
-
-    def _generate_payload(self, packet_type: str, data: bytes, **kwargs) -> bytes:
-        packet = {
-            "type": packet_type,
-            "address": self._socket.getsockname().__repr__(),
-            "data": base64.b64encode(data).decode('ascii')}
-        packet.update(kwargs)
-        payload = json.dumps(packet).encode("ascii")
-
-        return payload + TRANSFER_END
-
-    def _decode_packet(self, packet: bytes) -> None:
-        decoded = json.loads(packet.decode("ascii"))
-        decoded["data"] = base64.b64decode(decoded['data'])
-
-        match decoded["type"]:
-            case "file":
-                self._decode_file(decoded)
-            case _:
-                log(WARNING, "Received request with unknown type,", decoded['type'])
-
-    def _decode_file(self, decoded: dict) -> None:
-        log(DEBUG, "Saving file,", decoded['filename'])
-
-        with open(decoded["filename"], "wb") as file:
-            file.write(decoded["data"])
-
-    def send(self, packet_type: str, data: bytes, **kwargs) -> None:
-        log(DEBUG, f"Sending file, {packet_type=}")
-        assert check_connection(self._socket)
-        self._broadcast(
-            self._generate_payload(
-                packet_type,
-                data,
-                **kwargs
-            )
-        )
+    # def _connect_client(self, ip):
+    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #
+    #     try:
+    #         sock.connect((ip, PORT))
+    #         self._widgets["connection_status_label"].configure(text="connection successful")
+    #     except socket.error:
+    #         self._widgets["connection_status_label"].configure(text="connection failed")
+    #         return
+    #
+    #     self._socket = sock
+    #
+    #     while True:
+    #         try:
+    #             data = self._socket.recv(BUFFER_SIZE)
+    #         except socket.error:
+    #             self._socket.close()
+    #             self._widgets["connection_status_label"].configure(text="connection shutdown")
+    #             return
+    #
+    #         if data[-len(TRANSFER_END):] == TRANSFER_END:
+    #             self._buffer += data[0:-len(TRANSFER_END)]
+    #             self._decode_packet(self._buffer)
+    #             self._buffer = bytes()
+    #         else:
+    #             self._buffer += data
+    #
+    # def _connect_server(self):
+    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #
+    #     try:
+    #         sock.bind((self._ip, PORT))
+    #         sock.listen(1)
+    #         self._widgets["connection_status_label"].configure(text="connection successful")
+    #
+    #     except socket.socket:
+    #         self._widgets["connection_status_label"].configure(text="connection failed")
+    #         return
+    #
+    #     self._host = True
+    #     self._socket = sock
+    #
+    #     while True:
+    #         connection, _ = sock.accept()
+    #         peer = {"socket": connection, "key": None}
+    #         self._users[connection.getpeername().__repr__()] = peer
+    #
+    #         th.Thread(target=self._server_handler, args=(peer,), daemon=True).start()
+    #
+    # def _server_handler(self, peer: dict[str, socket.socket]):
+    #     while True:
+    #         try:
+    #             data = peer["socket"].recv(BUFFER_SIZE)
+    #             for _, user in self._users.items():
+    #                 if user != peer:
+    #                     user["socket"].send(data)
+    #
+    #         except socket.error:
+    #             self._users.pop(peer["socket"].getpeername().__repr__())
+    #             peer["socket"].close()
+    #             break
+    #
+    #         if data[-len(TRANSFER_END):] == TRANSFER_END:
+    #             self._buffer += data[0:-len(TRANSFER_END)]
+    #             self._decode_packet(self._buffer)
+    #             self._buffer = bytes()
+    #
+    #         else:
+    #             self._buffer += data
+    #
+    # def _broadcast(self, data: bytes) -> None:
+    #     if self._host:
+    #         for _, user in self._users.items():
+    #             user["socket"].send(data)
+    #     else:
+    #         self._socket.send(data)
+    #
+    # def _generate_payload(self, packet_type: str, data: bytes, **kwargs) -> bytes:
+    #     packet = {
+    #         "type": packet_type,
+    #         "address": self._socket.getsockname().__repr__(),
+    #         "data": base64.b64encode(data).decode('ascii')}
+    #     packet.update(kwargs)
+    #     payload = json.dumps(packet).encode("ascii")
+    #
+    #     return payload + TRANSFER_END
+    #
+    # def _decode_packet(self, packet: bytes) -> None:
+    #     decoded = json.loads(packet.decode("ascii"))
+    #     decoded["data"] = base64.b64decode(decoded['data'])
+    #
+    #     match decoded["type"]:
+    #         case "file":
+    #             self._decode_file(decoded)
+    #         case _:
+    #             log(WARNING, "Received request with unknown type,", decoded['type'])
+    #
+    # def _decode_file(self, decoded: dict) -> None:
+    #     log(DEBUG, "Saving file,", decoded['filename'])
+    #
+    #     with open(decoded["filename"], "wb") as file:
+    #         file.write(decoded["data"])
+    #
+    # def send(self, packet_type: str, data: bytes, **kwargs) -> None:
+    #     log(DEBUG, f"Sending file, {packet_type=}")
+    #     assert check_connection(self._socket)
+    #     self._broadcast(
+    #         self._generate_payload(
+    #             packet_type,
+    #             data,
+    #             **kwargs
+    #         )
+    #     )
 
 
 def main():
