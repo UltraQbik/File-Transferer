@@ -4,7 +4,6 @@ import json
 import base64
 import socket
 import threading
-import threading as th
 import time
 
 import customtkinter as ctk
@@ -22,32 +21,6 @@ BUFFER_SIZE = 8192
 TRANSFER_END = b'\x11packet_transfer_end\x11'
 
 KEY_SIZE = 4096
-
-
-def message_box(title, message):
-    log(INFO, f"Creating message box {title=}")
-
-    pop = ctk.CTkToplevel()
-    pop.wm_title(title)
-    pop.attributes("-topmost", True)
-
-    label = ctk.CTkLabel(pop, text=message)
-    label.pack(padx=10, pady=10)
-
-    button = ctk.CTkButton(pop, text="Ok", command=lambda: pop.destroy())
-    button.pack(padx=10, pady=10)
-
-
-def check_connection(sock: socket.socket | None) -> bool:
-    if sock is None:
-        return False
-
-    try:
-        sock.getsockname()
-        return True
-
-    except socket.error:
-        return False
 
 
 @dataclass
