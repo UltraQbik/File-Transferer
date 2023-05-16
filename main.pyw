@@ -133,7 +133,7 @@ class Server(threading.Thread):
             self._logger.log(WARNING, "Key not found, generating one now")
 
             key = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, KEY_SIZE)
-            uid = PGPUID.new("FileTransferServer")
+            uid = PGPUID.new("FileTransferServer", comment="https://github.com/UltraQbik/File-Transferer")
             key.add_uid(
                 uid,
                 usage={KeyFlags.Sign, KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
@@ -214,15 +214,12 @@ class ServerObject:
 
 def main():
     server = Server()
-    # app = Application(server=server)
 
     server.start()
-    # app.launch()
 
     server.close()
 
-
 if __name__ == '__main__':
-    # logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
-    logging.basicConfig(level=DEBUG)
+    logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
+    # logging.basicConfig(level=DEBUG)
     main()
