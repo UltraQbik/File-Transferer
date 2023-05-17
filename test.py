@@ -1,0 +1,2 @@
+from simplesystray import SysTrayIcon
+

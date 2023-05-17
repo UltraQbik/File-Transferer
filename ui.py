@@ -13,9 +13,15 @@ class UI:
 
         self._thread: th.Thread | None = None
 
-    def run(self):
+    def start(self):
         self._thread = th.Thread(target=self._create_window)
         self._thread.start()
+
+    def withdraw(self):
+        self._win.withdraw()
+
+    def deiconify(self):
+        self._win.deiconify()
 
     def close(self):
         self._win.quit()
@@ -135,13 +141,13 @@ class UI:
         right_frame = ctk.CTkFrame(self._win)
         right_frame.pack(padx=frp, pady=frp, fill="both", expand=True, side="right")
 
-        self._win.wm_protocol("WM_DELETE_WINDOW", self.close)
+        self._win.wm_protocol("WM_DELETE_WINDOW", self.withdraw)
         self._win.mainloop()
 
 
 def main():
     ui = UI(None)
-    ui.run()
+    ui.start()
 
 
 if __name__ == '__main__':
