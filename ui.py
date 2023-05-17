@@ -1,7 +1,104 @@
 import time
 import threading as th
+from abc import ABC
+
 import customtkinter as ctk
 from logging import log, DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+
+def create_2_sides(master) -> tuple:
+    # create sides for the settings window
+    left_side = ctk.CTkFrame(master)
+    left_side.pack(padx=4, pady=4, fill="both", expand=True, side="left")
+
+    right_side = ctk.CTkFrame(master)
+    right_side.pack(padx=4, pady=4, fill="both", expand=True, side="right")
+
+    return left_side, right_side
+
+
+class ConnectTabView(ctk.CTkTabview, ABC):
+    def __init__(self, master, server, **kwargs):
+        super(ConnectTabView, self).__init__(master, **kwargs)
+
+        self._server = server
+
+        # create tabs
+        self.add("Trusted servers")
+        self.add("Known servers")
+
+        # add widgets to "Known servers" tab
+        self._known_servers_tab()
+
+    def _known_servers_tab(self):
+        tab = self.tab("Known servers")
+
+        left, right = create_2_sides(tab)
+
+        # dropdown server menu
+        def dropdown_callback(var):
+            print(var, servers.index(var))
+        # servers = [server.name for server in self._server.known_servers]
+        servers = [f"192.168.{(i**3)%256}.{(i*3)%256}" for i in range(32)]
+        server_dropdown = ctk.CTkComboBox(left, values=servers, command=dropdown_callback, width=300)
+        server_dropdown.set("pick a known server")
+        server_dropdown.pack(padx=4, pady=4, fill="x")
+
+
+class OptionTabView(ctk.CTkTabview, ABC):
+    def __init__(self, master, **kwargs):
+        super(OptionTabView, self).__init__(master, **kwargs)
+
+        # create tabs
+        self.add("General settings")
+        self.add("Connection settings")
+        self.add("Maybe settings")
+
+        # add widgets to the "General settings" tab
+        self._general_settings_tab()
+
+        # add widgets to the "Connection settings" tab
+        self._connection_settings_tab()
+
+        # add widgets to the "Maybe settings" tab
+        self._maybe_settings_tab()
+
+    def _general_settings_tab(self):
+        tab = self.tab("General settings")
+
+        left, right = create_2_sides(tab)
+
+        # theme switch
+        def _theme_switch():
+            if theme_switch.get():
+                ctk.set_appearance_mode("light")
+            else:
+                ctk.set_appearance_mode("dark")
+        theme_switch = ctk.CTkSwitch(left, text="light theme", command=_theme_switch, width=180)
+        theme_switch.pack(padx=4, pady=4, fill="x")
+        # theme switch label
+        theme_label = ctk.CTkLabel(right, text="Changes the theme of the UI (default: dark)")
+        theme_label.pack(padx=4, pady=4, anchor="w")
+
+        # default download folder
+        download_entry = ctk.CTkEntry(left, width=180)
+        download_entry.insert(0, "downloads")
+        download_entry.pack(padx=4, pady=4, fill="x")
+        # default download folder label
+        download_label = ctk.CTkLabel(right, text="folder to which downloaded from server content will be put")
+        download_label.pack(padx=4, pady=4, anchor="w")
+
+    def _connection_settings_tab(self):
+        tab = self.tab("Connection settings")
+
+        left, right = create_2_sides(tab)
+
+    def _maybe_settings_tab(self):
+        tab = self.tab("Maybe settings")
+
+        epik = ctk.CTkLabel(tab, text="Great UI bruv")
+        epik.configure(font=ctk.CTkFont(size=72))
+        epik.pack(padx=4, pady=4)
 
 
 class UI:
@@ -21,9 +118,6 @@ class UI:
         self._win.quit()
 
     def _create_window(self):
-        # some magic numbers
-        frp = 6         # padding
-
         # create the root window
         self._win = ctk.CTk()
         self._win.wm_title("Great!")
@@ -31,7 +125,9 @@ class UI:
 
         # create top frame
         top_frame = ctk.CTkFrame(self._win, height=30)
-        top_frame.pack(padx=frp, pady=frp, fill="x", side="top")
+        top_frame.pack(padx=2, pady=2, fill="x", side="top")
+
+        left_frame, right_frame = create_2_sides(self._win)
 
         def create_connection_window():
             # create top level window
@@ -42,41 +138,9 @@ class UI:
             # Launches the window behind the main one, uncomment to make it always on top
             pop.attributes("-topmost", True)
 
-            # create inner frame
-            inner_frame = ctk.CTkFrame(pop)
-            inner_frame.pack(padx=frp, pady=frp, fill="both", expand=True)
-
-            # create a server frame
-            server_frame = ctk.CTkFrame(inner_frame)
-            server_frame.pack(padx=frp, pady=frp, fill="both", side="left")
-
-            # servers = [server.name for server in self._server.known_servers]
-            servers = [f"server_192.168.{i**2%255}.{i}" for i in range(16)]
-            server_dropdown = ctk.CTkOptionMenu(server_frame, values=servers, dynamic_resizing=False, width=200)
-            server_dropdown.set("pick a known server")
-            server_dropdown.pack(padx=frp, pady=frp, fill="x")
-
-            # create a connection frame
-            connect_frame = ctk.CTkFrame(inner_frame)
-            connect_frame.pack(padx=frp, pady=frp, fill="both", expand=True, side="right")
-
-            connect_button = ctk.CTkButton(connect_frame, text="connect!")
-            connect_button.pack(padx=frp, pady=frp, side="left", anchor="nw")
-
-            # NOTE: Radio buttons cause the window to bug out and not close properly
-            # def radiobutton_callback():
-            #     self._picked_server = server_var.get()
-            #
-            # NOTE: text=server must be changed to text=server.name when uncommenting this line
-            # servers = self._server.known_servers
-            # servers = [f"server_192.168.{i**2%255}.{i}" for i in range(32)]
-            # server_var = ctk.StringVar()
-            # for idx, server in enumerate(servers):
-            #     radiobutton = ctk.CTkRadioButton(
-            #         server_frame,
-            #         text=server, value=server, variable=server_var,
-            #         command=radiobutton_callback)
-            #     radiobutton.pack(padx=5, pady=5, fill="x")
+            # create connection tabview
+            tabview = ConnectTabView(pop, self._server)
+            tabview.pack(padx=8, pady=8, fill="both", expand=True)
 
         def open_options():
             # create top level window
@@ -87,53 +151,15 @@ class UI:
             # Launches the window behind the main one, uncomment to make it always on top
             pop.attributes("-topmost", True)
 
-            # create inner frame
-            inner_frame = ctk.CTkFrame(pop)
-            inner_frame.pack(padx=frp, pady=frp, fill="both", expand=True)
-
-            # create top frame
-            top_opt_frame = ctk.CTkFrame(inner_frame, height=30)
-            top_opt_frame.pack(padx=frp, pady=frp, fill="x", side="top")
-
-            def change_mode(val):
-                if not val:
-                    ctk.set_appearance_mode("dark")
-                else:
-                    ctk.set_appearance_mode("light")
-
-            change_theme_button = ctk.CTkCheckBox(top_opt_frame, text="theme", width=50,
-                                                  command=lambda: change_mode(change_theme_button.get()))
-            change_theme_button.pack(padx=frp, pady=frp, side="left")
-
-            # create folder entry
-            entry_frame = ctk.CTkFrame(inner_frame)
-            entry_frame.pack(padx=frp, pady=frp, fill="both", side="left")
-
-            download_folder = ctk.CTkEntry(entry_frame)
-            download_folder.delete(0, "end")
-            download_folder.insert(0, "downloads")
-            download_folder.pack(padx=frp, pady=frp, side="left", anchor="nw")
-
-            # create label frame
-            label_frame = ctk.CTkFrame(inner_frame)
-            label_frame.pack(padx=frp, pady=frp, fill="both", expand=True, side="right")
-
-            download_folder_label = ctk.CTkLabel(label_frame, text="Default download folder")
-            download_folder_label.pack(padx=frp, pady=frp, side="left", anchor="nw")
+            # create tabview
+            tabview = OptionTabView(pop)
+            tabview.pack(padx=8, pady=8, fill="both", expand=True)
 
         open_connect_button = ctk.CTkButton(top_frame, text="connect", width=40, command=create_connection_window)
-        open_connect_button.pack(padx=frp, pady=frp, side="left")
+        open_connect_button.pack(padx=4, pady=4, side="left")
 
         options_button = ctk.CTkButton(top_frame, text="options", width=40, command=open_options)
-        options_button.pack(padx=frp, pady=frp, side="right")
-
-        # create left frame
-        left_frame = ctk.CTkFrame(self._win)
-        left_frame.pack(padx=frp, pady=frp, fill="both", expand=True, side="left")
-
-        # create right frame
-        right_frame = ctk.CTkFrame(self._win)
-        right_frame.pack(padx=frp, pady=frp, fill="both", expand=True, side="right")
+        options_button.pack(padx=4, pady=4, side="right")
 
         self._win.wm_protocol("WM_DELETE_WINDOW", self.close)
         self._win.mainloop()
