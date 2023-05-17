@@ -24,8 +24,8 @@ class ConnectTabView(ctk.CTkTabview, ABC):
         self._server = server
 
         # create tabs
-        self.add("Trusted servers")
         self.add("Known servers")
+        self.add("Trusted servers")
 
         # add widgets to "Known servers" tab
         self._known_servers_tab()
