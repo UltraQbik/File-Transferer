@@ -4,10 +4,10 @@ import json
 import base64
 import socket
 import threading
-import threading as th
 import time
 
 import customtkinter as ctk
+import simplesystray.traybar
 from pgpy import PGPKey, PGPMessage, PGPUID
 from pgpy.constants import PubKeyAlgorithm, KeyFlags, HashAlgorithm, SymmetricKeyAlgorithm, CompressionAlgorithm
 from tkinter.filedialog import askopenfilename
@@ -16,6 +16,8 @@ import logging
 from dataclasses import dataclass
 import urllib
 from urllib import parse
+from simplesystray import SysTrayIcon
+from ui import UI
 
 PORT = 13698
 BUFFER_SIZE = 8192
@@ -24,37 +26,54 @@ TRANSFER_END = b'\x11packet_transfer_end\x11'
 KEY_SIZE = 4096
 
 
-def message_box(title, message):
-    log(INFO, f"Creating message box {title=}")
-
-    pop = ctk.CTkToplevel()
-    pop.wm_title(title)
-    pop.attributes("-topmost", True)
-
-    label = ctk.CTkLabel(pop, text=message)
-    label.pack(padx=10, pady=10)
-
-    button = ctk.CTkButton(pop, text="Ok", command=lambda: pop.destroy())
-    button.pack(padx=10, pady=10)
-
-
-def check_connection(sock: socket.socket | None) -> bool:
-    if sock is None:
-        return False
-
-    try:
-        sock.getsockname()
-        return True
-
-    except socket.error:
-        return False
-
-
 @dataclass
 class TrustedServer:
     ip: str
     fingerprint: str
     name: str
+
+
+class PersistentIcon(threading.Thread):
+    def __init__(self, quit_callback, settings_callback, open_callback):
+        super(PersistentIcon, self).__init__()
+        self._quit_callback = quit_callback
+        self._settings_callback = settings_callback
+        self._open_callback = open_callback
+        self._logger = logging.getLogger("PersistentIcon")
+
+        options = (
+            ("Open", None, self._open),
+            ("Settings", "icons/settings.ico", self._settings),
+            ("Quit", "icons/close.ico", self._exit),
+        )
+
+        self.icon = SysTrayIcon(
+            "icons/favicon.ico",
+            "FileTransfer",
+            options,
+            auto_quit_button=False,
+        )
+
+    def _open(self, _, __):
+        self._logger.log(INFO, "Opened")
+        self._open_callback()
+
+    def _settings(self, _, __):
+        self._logger.log(INFO, "Opened settings")
+        self._settings_callback()
+
+    def _exit(self, _, __):
+        self._logger.log(INFO, "Quiting now")
+        self._quit_callback()
+
+        try:
+            self.icon.shutdown()
+        except RuntimeError:
+            # it's a feature not a bug :)
+            ...
+
+    def run(self) -> None:
+        self.icon.start()
 
 
 class Server(threading.Thread):
@@ -69,6 +88,22 @@ class Server(threading.Thread):
         self._local_ip = "UNKNOWN"
 
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        self._UI: UI = UI(self)
+        self._UI.start()
+
+        self._tray_icon = PersistentIcon(
+            self.close,
+            self.open_ui,  # callback for opening the settings menu
+            self.open_ui
+        )
+        self._tray_icon.start()
+
+    def close_ui(self):
+        self._UI.withdraw()
+
+    def open_ui(self):
+        self._UI.deiconify()
 
     def _get_trusted_servers(self):
         self._logger.log(INFO, "Loading servers")
@@ -114,7 +149,11 @@ class Server(threading.Thread):
         return self._local_ip
 
     def close(self) -> None:
+        self._logger.log(INFO, "Closing now")
         self._running = False
+
+        if self._UI is not None:
+            self._UI.close()
 
     def _load_key(self):
         if os.path.exists("ServerKey"):
@@ -214,12 +253,9 @@ class ServerObject:
 
 def main():
     server = Server()
-
     server.start()
 
-    server.close()
-
 if __name__ == '__main__':
-    logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
-    # logging.basicConfig(level=DEBUG)
+    # logging.basicConfig(level=DEBUG, filename="FileTransfer.log")
+    logging.basicConfig(level=DEBUG)
     main()
