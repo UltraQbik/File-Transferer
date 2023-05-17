@@ -6,7 +6,7 @@ import customtkinter as ctk
 from logging import log, DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 
-def create_2_sides(master) -> tuple:
+def create_two_panes(master) -> tuple:
     # create sides for the settings window
     left_side = ctk.CTkFrame(master)
     left_side.pack(padx=4, pady=4, fill="both", expand=True, side="left")
@@ -33,11 +33,12 @@ class ConnectTabView(ctk.CTkTabview, ABC):
     def _known_servers_tab(self):
         tab = self.tab("Known servers")
 
-        left, right = create_2_sides(tab)
+        left, right = create_two_panes(tab)
 
         # dropdown server menu
         def dropdown_callback(var):
-            print(var, servers.index(var))
+            # print(var, servers.index(var))
+            pass
         # servers = [server.name for server in self._server.known_servers]
         servers = [f"192.168.{(i**3)%256}.{(i*3)%256}" for i in range(32)]
         server_dropdown = ctk.CTkComboBox(left, values=servers, command=dropdown_callback, width=300)
@@ -66,7 +67,7 @@ class OptionTabView(ctk.CTkTabview, ABC):
     def _general_settings_tab(self):
         tab = self.tab("General settings")
 
-        left, right = create_2_sides(tab)
+        left, right = create_two_panes(tab)
 
         # theme switch
         def _theme_switch():
@@ -91,7 +92,7 @@ class OptionTabView(ctk.CTkTabview, ABC):
     def _connection_settings_tab(self):
         tab = self.tab("Connection settings")
 
-        left, right = create_2_sides(tab)
+        left, right = create_two_panes(tab)
 
     def _maybe_settings_tab(self):
         tab = self.tab("Maybe settings")
@@ -123,6 +124,33 @@ class UI:
     def close(self):
         self._win.quit()
 
+    @staticmethod
+    def open_settings():
+        # create top level window
+        pop = ctk.CTkToplevel()
+        pop.wm_title("Connection")
+        pop.geometry("700x340")
+
+        # Launches the window behind the main one, uncomment to make it always on top
+        pop.attributes("-topmost", True)
+
+        # create tabview
+        tabview = OptionTabView(pop)
+        tabview.pack(padx=8, pady=8, fill="both", expand=True)
+
+    def open_connections_menu(self):
+        # create top level window
+        pop = ctk.CTkToplevel()
+        pop.wm_title("Connection")
+        pop.geometry("700x340")
+
+        # Launches the window behind the main one, uncomment to make it always on top
+        pop.attributes("-topmost", True)
+
+        # create connection tabview
+        tabview = ConnectTabView(pop, self._server)
+        tabview.pack(padx=8, pady=8, fill="both", expand=True)
+
     def _create_window(self):
         # create the root window
         self._win = ctk.CTk()
@@ -133,38 +161,12 @@ class UI:
         top_frame = ctk.CTkFrame(self._win, height=30)
         top_frame.pack(padx=2, pady=2, fill="x", side="top")
 
-        left_frame, right_frame = create_2_sides(self._win)
+        left_frame, right_frame = create_two_panes(self._win)
 
-        def create_connection_window():
-            # create top level window
-            pop = ctk.CTkToplevel()
-            pop.wm_title("Connection")
-            pop.geometry("700x340")
-
-            # Launches the window behind the main one, uncomment to make it always on top
-            pop.attributes("-topmost", True)
-
-            # create connection tabview
-            tabview = ConnectTabView(pop, self._server)
-            tabview.pack(padx=8, pady=8, fill="both", expand=True)
-
-        def open_options():
-            # create top level window
-            pop = ctk.CTkToplevel()
-            pop.wm_title("Connection")
-            pop.geometry("700x340")
-
-            # Launches the window behind the main one, uncomment to make it always on top
-            pop.attributes("-topmost", True)
-
-            # create tabview
-            tabview = OptionTabView(pop)
-            tabview.pack(padx=8, pady=8, fill="both", expand=True)
-
-        open_connect_button = ctk.CTkButton(top_frame, text="connect", width=40, command=create_connection_window)
+        open_connect_button = ctk.CTkButton(top_frame, text="connect", width=40, command=self.open_connections_menu)
         open_connect_button.pack(padx=4, pady=4, side="left")
 
-        options_button = ctk.CTkButton(top_frame, text="options", width=40, command=open_options)
+        options_button = ctk.CTkButton(top_frame, text="options", width=40, command=self.open_settings)
         options_button.pack(padx=4, pady=4, side="right")
 
         self._win.wm_protocol("WM_DELETE_WINDOW", self.withdraw)
